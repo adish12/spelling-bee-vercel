@@ -96,8 +96,8 @@
   .nbtn:hover{border-color:#F7C948;color:var(--text-primary);background:var(--new-hover-bg)}
   .hex-btn{background:none;border:none;cursor:pointer;padding:0;flex-shrink:0;transition:transform .1s;-webkit-tap-highlight-color:transparent;outline:none}
   .hex-btn:active{transform:scale(0.88)}
-  .theme-toggle{position:fixed;top:14px;right:14px;background:var(--card-bg);border:1px solid var(--card-border);border-radius:50%;width:40px;height:40px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;z-index:100;transition:all .3s;box-shadow:0 2px 8px var(--card-shadow);-webkit-tap-highlight-color:transparent;outline:none}
-  .theme-toggle:hover{transform:scale(1.1)}
+  .theme-toggle{background:var(--card-bg);border:1px solid var(--card-border);border-radius:50%;width:36px;height:36px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:background .3s,border-color .3s;box-shadow:0 1px 4px var(--card-shadow);-webkit-tap-highlight-color:transparent;outline:none;flex-shrink:0}
+  .theme-toggle:hover{opacity:0.85}
 </style>
 </head>
 <body>
@@ -185,17 +185,21 @@ function getMaxScore(validWords,letters){
 
 function Hex({letter,isCenter,onClick,R,dark}){
   const W=Math.sqrt(3)*R,H=2*R;
-  const pts=Array.from({length:6},(_,i)=>{
+  const bw=2.5; // border width
+  const mkPts=(r,cx,cy)=>Array.from({length:6},(_,i)=>{
     const a=(Math.PI/180)*(60*i-30);
-    return`${W/2+R*Math.cos(a)},${H/2+R*Math.sin(a)}`;
+    return`${cx+r*Math.cos(a)},${cy+r*Math.sin(a)}`;
   }).join(" ");
+  const outerPts=mkPts(R,W/2,H/2);
+  const innerPts=mkPts(R-bw,W/2,H/2);
   const fill=isCenter?(dark?"#D4A017":"#F7C948"):(dark?"#3A3632":"#E8E4DC");
   const stroke=isCenter?(dark?"#B8880F":"#D4A017"):(dark?"#4A4640":"#C8C2B8");
   const textFill=isCenter?"#1A1200":(dark?"#E8E4DC":"#2D2A24");
   return e("button",{className:"hex-btn",onClick:()=>onClick(letter),style:{width:W,height:H},"aria-label":letter},
     e("svg",{width:W,height:H,viewBox:`0 0 ${W} ${H}`},
-      e("polygon",{points:pts,fill,stroke,strokeWidth:"2.5",style:{transition:"fill 0.3s, stroke 0.3s"}}),
-      e("text",{x:W/2,y:H/2+1,textAnchor:"middle",dominantBaseline:"middle",fontSize:R*0.7,fontWeight:"800",fontFamily:"'DM Sans',sans-serif",fill:textFill,style:{userSelect:"none",pointerEvents:"none",transition:"fill 0.3s"}},letter)
+      e("polygon",{points:outerPts,fill:stroke,style:{transition:"fill 0.3s"}}),
+      e("polygon",{points:innerPts,fill,style:{transition:"fill 0.3s"}}),
+      e("text",{x:W/2,y:H/2,textAnchor:"middle",dominantBaseline:"central",fontSize:R*0.7,fontWeight:"800",fontFamily:"'DM Sans',sans-serif",fill:textFill,style:{userSelect:"none",pointerEvents:"none",transition:"fill 0.3s"}},letter)
     )
   );
 }
@@ -229,14 +233,39 @@ function App(){
   const[shake,setShake]=useState(false);
   const[pop,setPop]=useState(false);
   const[dark,setDark]=useState(()=>{try{return window.matchMedia("(prefers-color-scheme:dark)").matches}catch(e){return false}});
+  const[prevGame,setPrevGame]=useState(null);
   const msgTimeout=useRef(null);
   const submitRef=useRef(null);
   const shuffleRef=useRef(null);
 
+  const puzzleRef=useRef(null);
+  const foundRef=useRef([]);
+  const scoreRef=useRef(0);
+
+  // Keep refs in sync
+  useEffect(()=>{puzzleRef.current=puzzle;},[puzzle]);
+  useEffect(()=>{foundRef.current=found;},[found]);
+  useEffect(()=>{scoreRef.current=score;},[score]);
+
   const startNewGame=useCallback(()=>{
+    // Save current game for undo (only if there's an active game with progress)
+    if(puzzleRef.current&&foundRef.current.length>0){
+      setPrevGame({puzzle:puzzleRef.current,found:foundRef.current,score:scoreRef.current});
+    }else{
+      setPrevGame(null);
+    }
     setPuzzle(generatePuzzle());
     setInput("");setFound([]);setScore(0);setMessage(null);setShowWords(false);
   },[]);
+
+  const undoNewGame=useCallback(()=>{
+    if(!prevGame)return;
+    setPuzzle(prevGame.puzzle);
+    setFound(prevGame.found);
+    setScore(prevGame.score);
+    setPrevGame(null);
+    setInput("");setMessage(null);setShowWords(false);
+  },[prevGame]);
 
   useEffect(()=>{startNewGame();},[startNewGame]);
   useEffect(()=>{document.body.classList.toggle("dark",dark);},[dark]);
@@ -304,16 +333,15 @@ function App(){
   const foundPangrams=found.filter(w=>isPangram(w,allLetters)).length;
 
   return e("div",{style:{display:"flex",flexDirection:"column",alignItems:"center",padding:"20px 16px 40px",transition:"all 0.3s"}},
-    // Dark mode toggle
-    e("button",{className:"theme-toggle",onClick:toggleDark,"aria-label":"Toggle dark mode"},dark?"☀️":"🌙"),
     // Header
-    e("div",{style:{textAlign:"center",marginBottom:18}},
-      e("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:2}},
+    e("div",{style:{textAlign:"center",marginBottom:18,width:"100%",maxWidth:400}},
+      e("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:2,position:"relative"}},
         e("svg",{width:30,height:30,viewBox:"0 0 30 30"},
-          e("polygon",{points:"15,2 27,8.5 27,21.5 15,28 3,21.5 3,8.5",fill:"#F7C948",stroke:"#D4A017",strokeWidth:"1.5"}),
-          e("text",{x:15,y:17,textAnchor:"middle",fontSize:13,fontWeight:800,fill:"var(--center-text)",fontFamily:"DM Sans"},"B")
+          e("polygon",{points:"15,2 27,8.5 27,21.5 15,28 3,21.5 3,8.5",fill:"#F7C948",stroke:"#D4A017",strokeWidth:"1.5",strokeLinejoin:"round"}),
+          e("text",{x:15,y:15.5,textAnchor:"middle",dominantBaseline:"central",fontSize:13,fontWeight:800,fill:"var(--center-text)",fontFamily:"DM Sans"},"B")
         ),
-        e("h1",{style:{fontFamily:"'DM Serif Display',Georgia,serif",fontSize:30,fontWeight:400,color:"var(--logo-text)",margin:0,transition:"color 0.3s"}},"Spelling Bee")
+        e("h1",{style:{fontFamily:"'DM Serif Display',Georgia,serif",fontSize:30,fontWeight:400,color:"var(--logo-text)",margin:0,transition:"color 0.3s"}},"Spelling Bee"),
+        e("button",{className:"theme-toggle",onClick:toggleDark,"aria-label":"Toggle dark mode",style:{position:"absolute",right:0}},dark?"☀️":"🌙")
       ),
       e("p",{style:{fontSize:11,color:"var(--text-secondary)",margin:0,letterSpacing:1.5,textTransform:"uppercase",fontWeight:600,transition:"color 0.3s"}},"Unlimited Edition")
     ),
@@ -348,9 +376,20 @@ function App(){
     e(Honeycomb,{center:puzzle.center,outer:puzzle.outer,onLetterClick:addLetter,dark}),
     // Controls
     e("div",{style:{display:"flex",gap:14,alignItems:"center",marginTop:12,marginBottom:20}},
-      e("button",{className:"cbtn",onClick:deleteLetter,title:"Delete"},"←"),
+      e("button",{className:"cbtn",onClick:deleteLetter,title:"Delete"},
+        e("svg",{width:20,height:20,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2.5,strokeLinecap:"round",strokeLinejoin:"round"},
+          e("line",{x1:19,y1:12,x2:5,y2:12}),
+          e("polyline",{points:"12 19 5 12 12 5"})
+        )
+      ),
       e("button",{className:"abtn",onClick:submitWord},"Enter"),
-      e("button",{className:"cbtn",onClick:shuffleLetters,title:"Shuffle"},"⟳")
+      e("button",{className:"cbtn",onClick:shuffleLetters,title:"Shuffle"},
+        e("svg",{width:20,height:20,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2.5,strokeLinecap:"round",strokeLinejoin:"round"},
+          e("path",{d:"M23 4v6h-6"}),
+          e("path",{d:"M1 20v-6h6"}),
+          e("path",{d:"M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"})
+        )
+      )
     ),
     // Found words
     e("div",{style:{width:"100%",maxWidth:400,background:"var(--card-bg)",borderRadius:16,padding:"14px 20px",boxShadow:"0 1px 4px var(--card-shadow)",border:"1px solid var(--card-border)",marginBottom:16,transition:"all 0.3s"}},
@@ -366,7 +405,10 @@ function App(){
     // Bottom
     e("div",{style:{width:"100%",maxWidth:400,display:"flex",justifyContent:"space-between",alignItems:"center",padding:"0 4px"}},
       e("div",{style:{fontSize:12,color:"var(--text-secondary)",transition:"color 0.3s"}},`${foundPangrams} / ${puzzle.pangrams.length} pangram${puzzle.pangrams.length!==1?"s":""} found`),
-      e("button",{className:"nbtn",onClick:startNewGame},"✦ New Puzzle")
+      e("div",{style:{display:"flex",gap:8,alignItems:"center"}},
+        prevGame&&e("button",{className:"nbtn",onClick:undoNewGame,style:{borderColor:"var(--msg-success-text)",color:"var(--msg-success-text)"}},"↩ Undo"),
+        e("button",{className:"nbtn",onClick:startNewGame},"✦ New Puzzle")
+      )
     ),
     e("p",{style:{fontSize:11,color:"var(--text-muted)",marginTop:28,textAlign:"center",letterSpacing:0.5,transition:"color 0.3s"}},"Type letters · Enter to submit · Space to shuffle")
   );
